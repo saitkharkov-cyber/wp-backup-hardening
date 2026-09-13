@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FileWatch 2.4.1 — мини-ПУ</title>
+  <style>
+    :root{
+      color-scheme: light dark;
+      --bg:#111318;
+      --panel:#1a1e26;
+      --line:#343a46;
+      --text:#eef2f7;
+      --muted:#aab3c2;
+      --accent:#6ea8fe;
+      --warn:#f0ad4e;
+      --danger:#dc5c5c;
+      --ok:#54b985;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      padding:24px;
+    }
+    .panel{
+      width:min(760px,100%);
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:24px;
+      box-shadow:0 16px 50px rgba(0,0,0,.25);
+    }
+    h1{margin:0 0 6px;font-size:24px}
+    .sub{margin:0 0 22px;color:var(--muted);font-size:14px}
+    label{display:block;margin:14px 0 7px;font-weight:600}
+    .input-row{display:flex;gap:8px}
+    input{
+      width:100%;
+      padding:12px 13px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#10131a;
+      color:var(--text);
+      font-size:15px;
+      outline:none;
+    }
+    input:focus{border-color:var(--accent)}
+    .tiny-btn{
+      flex:0 0 auto;
+      padding:0 14px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#242a35;
+      color:var(--text);
+      cursor:pointer;
+    }
+    .actions{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+      margin-top:22px;
+    }
+    button.action{
+      border:0;
+      border-radius:10px;
+      padding:13px 12px;
+      font-size:14px;
+      font-weight:700;
+      cursor:pointer;
+      background:#2b3443;
+      color:#fff;
+    }
+    button.action:hover{filter:brightness(1.12)}
+    .status{background:#3a4a63!important}
+    .quick{background:#2f6f9f!important}
+    .full{background:#385d8a!important}
+    .pause{background:#8b6b2f!important}
+    .baseline{background:#8b4b36!important}
+    .resume{background:#2d7655!important}
+    .preview{
+      margin-top:18px;
+      padding:11px 12px;
+      border:1px dashed var(--line);
+      border-radius:10px;
+      color:var(--muted);
+      font-size:13px;
+      word-break:break-all;
+    }
+    .note{
+      margin-top:16px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .saved{
+      margin-top:10px;
+      min-height:18px;
+      color:var(--ok);
+      font-size:13px;
+    }
+    @media(max-width:620px){
+      .actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>FileWatch 2.4.1</h1>
+    <p class="sub">Универсальная локальная мини-панель управления</p>
+
+    <label for="site">URL сайта</label>
+    <input id="site" type="url" inputmode="url" placeholder="https://example.com" autocomplete="off">
+
+    <label for="key">KEY</label>
+    <div class="input-row">
+      <input id="key" type="password" placeholder="FileWatch key" autocomplete="off">
+      <button class="tiny-btn" id="toggleKey" type="button">Показать</button>
+    </div>
+
+    <div class="saved" id="saved"></div>
+
+    <div class="actions">
+      <button class="action status" data-action="status">СТАТУС</button>
+      <button class="action quick" data-action="quick">QUICK</button>
+      <button class="action full" data-action="full">FULL</button>
+      <button class="action pause" data-action="pause">PAUSE</button>
+      <button class="action baseline" data-action="baseline">BASELINE</button>
+      <button class="action resume" data-action="resume">RESUME</button>
+    </div>
+
+    <div class="preview" id="preview">Введите URL сайта и KEY.</div>
+
+    <div class="note">
+      URL и KEY сохраняются в localStorage этого браузера. Любое новое значение в поле перезаписывает сохранённое.
+      В самом HTML ключ не зашит.
+    </div>
+  </main>
+
+<script>
+(() => {
+  const site = document.getElementById('site');
+  const key = document.getElementById('key');
+  const preview = document.getElementById('preview');
+  const saved = document.getElementById('saved');
+  const toggleKey = document.getElementById('toggleKey');
+
+  const LS_SITE = 'filewatch241_site';
+  const LS_KEY  = 'filewatch241_key';
+
+  site.value = localStorage.getItem(LS_SITE) || '';
+  key.value  = localStorage.getItem(LS_KEY) || '';
+
+  function normalizeSite(value) {
+    let v = value.trim();
+    if (!v) return '';
+    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    try {
+      const u = new URL(v);
+      return u.origin;
+    } catch {
+      return v.replace(/\/+$/, '');
+    }
+  }
+
+  let saveTimer;
+  function saveInputs() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const s = site.value.trim();
+      const k = key.value.trim();
+
+      if (s) localStorage.setItem(LS_SITE, normalizeSite(s));
+      else localStorage.removeItem(LS_SITE);
+
+      if (k) localStorage.setItem(LS_KEY, k);
+      else localStorage.removeItem(LS_KEY);
+
+      saved.textContent = 'Сохранено локально';
+      setTimeout(() => saved.textContent = '', 1200);
+      updatePreview();
+    }, 180);
+  }
+
+  site.addEventListener('input', saveInputs);
+  key.addEventListener('input', saveInputs);
+
+  function buildUrl(action) {
+    const base = normalizeSite(site.value);
+    const k = key.value.trim();
+
+    if (!base || !k) return '';
+
+    const encKey = encodeURIComponent(k);
+    const fw = base + '/filewatch/';
+
+    switch (action) {
+      case 'status':
+        return fw + 'filewatch_status.php?key=' + encKey;
+      case 'baseline':
+        return fw + 'filewatch_init.php?key=' + encKey;
+      case 'pause':
+        return fw + 'filewatch_pause.php?key=' + encKey;
+      case 'resume':
+        return fw + 'filewatch_resume.php?key=' + encKey;
+      case 'quick':
+        return fw + 'filewatch_check.php?key=' + encKey;
+      case 'full':
+        return fw + 'filewatch_check.php?mode=full&key=' + encKey;
+      default:
+        return '';
+    }
+  }
+
+  function updatePreview() {
+    const url = buildUrl('quick');
+    preview.textContent = url ? 'QUICK: ' + url : 'Введите URL сайта и KEY.';
+  }
+
+  document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const url = buildUrl(action);
+
+      if (!url) {
+        alert('Заполни URL сайта и KEY.');
+        return;
+      }
+
+      localStorage.setItem(LS_SITE, normalizeSite(site.value));
+      localStorage.setItem(LS_KEY, key.value.trim());
+      site.value = normalizeSite(site.value);
+
+      if (action === 'baseline') {
+        const ok = confirm(
+          'BASELINE примет текущее состояние файлов как новый эталон.\n\nПродолжить?'
+        );
+        if (!ok) return;
+      }
+
+      window.open(url, '_blank', 'noopener');
+      updatePreview();
+    });
+  });
+
+  toggleKey.addEventListener('click', () => {
+    const show = key.type === 'password';
+    key.type = show ? 'text' : 'password';
+    toggleKey.textContent = show ? 'Скрыть' : 'Показать';
+  });
+
+  updatePreview();
+})();
+</script>
+</body>
+</html>

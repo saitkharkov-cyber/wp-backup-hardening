@@ -32,6 +32,21 @@ function setPerm($path, $mode)
     }
 }
 
+
+function unhardenRootFiles($root)
+{
+    $it = new FilesystemIterator($root, FilesystemIterator::SKIP_DOTS);
+
+    foreach ($it as $item) {
+
+        if ($item->isLink() || !$item->isFile()) {
+            continue;
+        }
+
+        setPerm($item->getPathname(), 0644);
+    }
+}
+
 function unhardenTree($path)
 {
     if (!is_dir($path)) {
@@ -63,10 +78,15 @@ function unhardenTree($path)
 }
 
 
-/* Возвращаем обычные права */
+/* Возвращаем обычные права файлам в корне WordPress */
+unhardenRootFiles($root);
+
+
+/* Возвращаем обычные права каталогам WordPress */
 unhardenTree($root . '/wp-admin');
 unhardenTree($root . '/wp-includes');
 unhardenTree($root . '/wp-content');
+unhardenTree($root . '/filewatch');
 
 
 /* wp-config и .htaccess снова разрешаем владельцу менять */
@@ -88,5 +108,7 @@ echo "UNHARDEN DONE\n";
 echo "SUCCESS: $ok\n";
 echo "FAILED:  $fail\n";
 echo "directories: 755\n";
+echo "filewatch: WRITABLE\n";
+echo "root files: 644\n";
 echo "files: 644\n";
 echo "====================\n";

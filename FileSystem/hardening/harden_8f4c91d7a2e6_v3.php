@@ -32,6 +32,19 @@ function setPerm($path, $mode)
     }
 }
 
+function hardenRootFiles($root)
+{
+    $it = new FilesystemIterator($root, FilesystemIterator::SKIP_DOTS);
+
+    foreach ($it as $item) {
+        if ($item->isLink() || !$item->isFile()) {
+            continue;
+        }
+
+        setPerm($item->getPathname(), 0444);
+    }
+}
+
 function hardenTree($path)
 {
     if (!is_dir($path)) {
@@ -47,7 +60,6 @@ function hardenTree($path)
     );
 
     foreach ($it as $item) {
-
         if ($item->isLink()) {
             continue;
         }
@@ -68,10 +80,6 @@ function writableTree($path)
         return;
     }
 
-    /*
-     * Сначала открываем верхний каталог,
-     * затем всё дерево.
-     */
     setPerm($path, 0755);
 
     $it = new RecursiveIteratorIterator(
@@ -83,7 +91,6 @@ function writableTree($path)
     );
 
     foreach ($it as $item) {
-
         if ($item->isLink()) {
             continue;
         }
@@ -96,25 +103,27 @@ function writableTree($path)
     }
 }
 
+/* Файлы в корне WordPress */
+hardenRootFiles($root);
 
 /* WordPress core */
 hardenTree($root . '/wp-admin');
 hardenTree($root . '/wp-includes');
 
-
 /*
  * ВЕСЬ wp-content сначала закрываем.
- * Сюда входят:
- * plugins
- * themes
- * mu-plugins
- * upgrade
- * upgrade-temp-backup
- * cache
- * и любые неизвестные каталоги.
+ * Сюда входят plugins, themes, mu-plugins,
+ * upgrade, cache и любые неизвестные каталоги.
  */
 hardenTree($root . '/wp-content');
 
+/*
+ * FileWatch полностью закрываем:
+ * каталоги 0555, файлы 0444.
+ * Его baseline/state находятся выше web-root,
+ * поэтому работа мониторинга не нарушается.
+ */
+hardenTree($root . '/filewatch');
 
 /*
  * Разрешённые writable-каталоги.
@@ -128,10 +137,9 @@ foreach ($writable as $path) {
     writableTree($path);
 }
 
-
 /*
- * Защитные файлы .htaccess
- * после открытия uploads снова ставим 0444.
+ * Защитные файлы после открытия uploads
+ * снова ставим 0444.
  */
 $protectedFiles = [
     $root . '/wp-config.php',
@@ -145,12 +153,13 @@ foreach ($protectedFiles as $file) {
     }
 }
 
-
 echo "\n====================\n";
 echo "HARDEN DONE\n";
 echo "SUCCESS: $ok\n";
 echo "FAILED:  $fail\n";
 echo "wp-content: READ ONLY\n";
 echo "uploads: WRITABLE\n";
+echo "filewatch: READ ONLY\n";
+echo "root files: READ ONLY\n";
 echo ".htaccess: PROTECTED\n";
 echo "====================\n";
