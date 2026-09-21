@@ -6,12 +6,71 @@ require_once __DIR__ . '/filewatch_lib.php';
 fw_auth();
 
 $mode = isset($_GET['mode']) && $_GET['mode'] === 'full' ? 'full' : 'quick';
+$cron = isset($_GET['cron']) && $_GET['cron'] === '1';
+
+/*
+ * Для cron-job.org отдаём только короткий ответ.
+ * Обычный режим панели по-прежнему получает полный JSON.
+ */
+$respond = static function (array $data, int $statusCode = 200) use ($cron): void {
+    if (!$cron) {
+        fw_json_response($data, $statusCode);
+    }
+
+    http_response_code($statusCode);
+    header('Content-Type: text/plain; charset=utf-8');
+
+    $ok = ($data['ok'] ?? false) === true;
+
+    if (!$ok) {
+        echo 'ERROR';
+
+        if (!empty($data['error'])) {
+            echo ' ' . $data['error'];
+        }
+
+        echo "\n";
+        exit;
+    }
+
+    $mode = strtoupper((string)($data['mode'] ?? 'UNKNOWN'));
+    $status = (string)($data['status'] ?? 'active');
+
+    if ($status === 'paused') {
+        echo "OK {$mode} status=paused\n";
+        exit;
+    }
+
+    if ($mode === 'QUICK') {
+        echo 'OK QUICK'
+            . ' changes=' . (int)($data['changes'] ?? 0)
+            . ' mail_attempted=' . (!empty($data['mail_attempted']) ? '1' : '0')
+            . ' mail_sent=' . (!empty($data['mail_sent']) ? '1' : '0')
+            . ' suppressed=' . (!empty($data['same_alert_suppressed']) ? '1' : '0')
+            . "\n";
+        exit;
+    }
+
+    if ($mode === 'FULL') {
+        echo 'OK FULL'
+            . ' checked=' . (int)($data['checked_this_run'] ?? 0)
+            . '/' . (int)($data['files_total'] ?? 0)
+            . ' changes=' . (int)($data['changes_this_run'] ?? 0)
+            . ' cycle_done=' . (!empty($data['cycle_done']) ? '1' : '0')
+            . ' mail_sent=' . (!empty($data['mail_sent']) ? '1' : '0')
+            . "\n";
+        exit;
+    }
+
+    echo "OK {$mode}\n";
+    exit;
+};
 
 try {
     $state = fw_state();
 
     if (($state['paused'] ?? false) === true) {
-        fw_json_response([
+        $respond([
             'ok' => true,
             'mode' => $mode,
             'status' => 'paused',
@@ -24,7 +83,7 @@ try {
     $baselineDoc = fw_read_json(fw_path('baseline.json'));
 
     if (!$baselineDoc || !isset($baselineDoc['objects']) || !is_array($baselineDoc['objects'])) {
-        fw_json_response([
+        $respond([
             'ok' => false,
             'error' => 'Baseline not found. Run filewatch_init.php first.',
         ], 409);
@@ -50,7 +109,7 @@ try {
                 $mailSent = fw_send_mail(fw_subject('QUICK', $count), $body);
 
                 $state['last_quick_signature'] = $sig;
-                $state['last_alert_signature'] = $sig; // backward compatibility
+                $state['last_alert_signature'] = $sig;
                 $state['last_alert_time'] = date('c');
                 fw_save_state($state);
             } else {
@@ -63,7 +122,7 @@ try {
             fw_save_state($state);
         }
 
-        fw_json_response([
+        $respond([
             'ok' => true,
             'mode' => 'quick',
             'status' => 'active',
@@ -80,11 +139,13 @@ try {
      * FULL SHA-256 mode, порциями.
      */
     $files = [];
+
     foreach ($baseline as $path => $entry) {
         if (($entry['type'] ?? '') === 'file') {
             $files[] = $path;
         }
     }
+
     sort($files, SORT_STRING);
 
     $total = count($files);
@@ -182,7 +243,7 @@ try {
 
     fw_save_state($state);
 
-    fw_json_response([
+    $respond([
         'ok' => true,
         'mode' => 'full',
         'status' => 'active',
@@ -197,5 +258,8 @@ try {
     ]);
 
 } catch (Throwable $e) {
-    fw_json_response(['ok' => false, 'error' => $e->getMessage()], 500);
+    $respond([
+        'ok' => false,
+        'error' => $e->getMessage(),
+    ], 500);
 }
