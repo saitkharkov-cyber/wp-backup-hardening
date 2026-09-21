@@ -19,6 +19,9 @@ $respond = static function (array $data, int $statusCode = 200) use ($cron): voi
 
     http_response_code($statusCode);
     header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
 
     $ok = ($data['ok'] ?? false) === true;
 
