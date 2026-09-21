@@ -1,5 +1,8 @@
 Options -Indexes
 
+AuthMerging Off
+Require all granted
+
 <FilesMatch "^(filewatch_config|filewatch_lib)\.php$">
     Require all denied
 </FilesMatch>
